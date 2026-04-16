@@ -3,7 +3,11 @@ Multi-Source EDR Visualizer (Sysmon, Defender, & Security)
 A high-fidelity security analysis tool that reconstructs Windows event logs into a hierarchical, EDR-style process tree. This version features an enhanced Universal Parsing Engine that correctly decodes complex Windows Security attributes and supports cumulative loading to merge live logs and forensic files into a single unified timeline.
 🚀 Key Features
 
-    Universal Property Mapping (New): Uses advanced XML-based parsing to correctly extract "Named" properties (like TargetUserName, IpAddress, and CommandLine) that are often blank or incorrectly parsed in standard Security and Sysmon logs.
+    Universal Property Mapping: Uses advanced XML-based parsing to correctly extract "Named" properties (like TargetUserName, IpAddress, and CommandLine) that are often blank or incorrectly parsed in standard Security and Sysmon log views.
+
+    Performance-Optimized HTML Export (New): High-speed report generation engine using StringBuilder to prevent the application from becoming non-responsive when exporting or opening large datasets in the browser.
+
+    Full Date Range Filtering (New): Ability to filter merged datasets by specific start and end dates—essential when manually adding older .evtx or .xml logs that fall outside the initial 24-hour live lookback.
 
     Multi-Source Ingestion: Combines data from:
 
@@ -13,13 +17,9 @@ A high-fidelity security analysis tool that reconstructs Windows event logs into
 
         Windows Security: Enhanced decoding for Logons (ID 4624), Failures (4625), Group Enumeration (4798), and Credential Reads (5379).
 
-    Selection Hub: A pre-launch dashboard to toggle specific live log sources for a 24-hour lookback.
-
     Cumulative Loading: Merge multiple .evtx or .xml files without wiping existing data—perfect for tracking lateral movement across different machines.
 
-    Persistent Investigation (Fixed): Applying a filter that yields no results no longer wipes your data. Simply clear the filter fields and click Apply to restore the full original log set.
-
-    EDR-Style Visualization: Maps parent-child relationships with specialized icons and a clean "Activity Tree" layout.
+    Persistent Investigation: Applying a filter that yields no results no longer wipes your session. Simply clear the filter fields and click Apply to restore the full original dataset.
 
 📋 Requirements
 
@@ -42,21 +42,21 @@ Upon launch, a Selection Hub appears:
 
 2. The Dashboard
 
-    Add Log: Import external logs. These are appended to your current view, allowing for cross-machine correlation.
+    Add Log: Import external forensic logs. These are appended to your current view, allowing for timeline correlation across multiple files or hosts.
 
-    Universal Filter: Narrows down the tree by User, Event ID, Date Range, or Activity keywords.
+    Universal Filter: Narrows down the activity tree by User, Event ID, Date Range, or Activity keywords (Image names, IPs, etc.).
 
-    Data Restoration: If a search returns no results, clearing the filter boxes and clicking Apply immediately restores your full investigation data.
+    Status Bar: Real-time feedback on log counts and export progress.
 
 3. Reporting
 
-    Open HTML: Generates a temporary, interactive report in your default browser.
+    Open HTML: Generates a temporary, CSS-styled interactive report and launches it in your default browser immediately.
 
-    Save HTML: Exports a standalone report for evidence or peer review.
+    Save HTML: Exports a standalone, portable report for evidence or peer review. Optimized to handle thousands of rows without freezing the UI.
 
 📥 Installation
 
-    Clone the repository or download Sysmon_Visualizer.ps1.
+    Download Sysmon_Visualizer.ps1.
 
     Open PowerShell as Administrator.
 
