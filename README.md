@@ -39,7 +39,7 @@ A high-fidelity security analysis tool that reconstructs Windows event logs into
 Upon launch, choose to pull Live Logs (last 24 hours) from the local machine or proceed to the dashboard for Manual Import of forensic files.
 2. The Dashboard
 
-    Add Log: Merge new .evtx or .xml files into your current timeline.
+    Add Log: Merge new .evtx logs into your current timeline.
 
     Clear Logs: Resets the current investigation and wipes the session memory.
 
