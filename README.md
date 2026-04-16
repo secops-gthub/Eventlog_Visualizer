@@ -25,7 +25,7 @@ A high-fidelity security analysis tool that reconstructs Windows event logs into
 
     OS: Windows 10/11 or Windows Server 2016+.
 
-    PowerShell: Version 5.1 or 7.x (Optimized for modern XAML handling).
+    PowerShell: Version 7.x (Optimized for modern XAML handling).
 
     Permissions: Must be run as Administrator to access the Windows Security and Sysmon log streams.
 
