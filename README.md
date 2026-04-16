@@ -29,7 +29,7 @@ A high-fidelity security analysis tool that reconstructs Windows event logs into
 
     OS: Windows 10/11 or Windows Server 2016+.
 
-    PowerShell: Version 5.1 or 7.x.
+    PowerShell: 7.x.
 
     Permissions: Administrator privileges are required to access live local log streams.
 
