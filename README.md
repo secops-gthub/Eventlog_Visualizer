@@ -1,4 +1,3 @@
-Here is the updated README.md file. It incorporates the new universal parsing logic for Security logs, the fixed filtering behavior that prevents data loss, and updated requirements based on the latest script improvements.
 Multi-Source EDR Visualizer (Sysmon, Defender, & Security)
 
 A high-fidelity security analysis tool that reconstructs Windows event logs into a hierarchical, EDR-style process tree. This version features an enhanced Universal Parsing Engine that correctly decodes complex Windows Security attributes and supports cumulative loading to merge live logs and forensic files into a single unified timeline.
