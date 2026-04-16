@@ -1,9 +1,9 @@
 <#
     Sysmon EDR Visualizer - Pro Edition
-    - Startup Prompt for live logs with performance warning
+    - Startup Prompt for live logs
     - Hierarchical Process-Activity Trees for ALL Events
-    - Option to "Open HTML" (Instant) or "Save HTML" (File Dialog)
-    - Full Context Filtering (Date, User, ID, Search)
+    - Chronological Sorting: Newest to Oldest (Descending)
+    - Instant HTML View and Manual Save
 #>
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
@@ -19,6 +19,7 @@ function Get-SysmonEvents {
             $xmlData = [xml](Get-Content $Path)
             $events = $xmlData.SelectNodes("//Event") 
         } elseif ($Path) {
+            # Use -Oldest to read them all, but we will sort Descending later for the view
             $events = Get-WinEvent -Path $Path -Oldest | Where-Object { $_.ProviderName -eq 'Microsoft-Windows-Sysmon' }
         } else {
             $events = Get-WinEvent -LogName "Microsoft-Windows-Sysmon/Operational" -Oldest -ErrorAction Stop
@@ -36,6 +37,7 @@ function Get-SysmonEvents {
         $id = if ($xml.Event.System.EventID) { $xml.Event.System.EventID } else { $e.Id }
         
         [PSCustomObject]@{
+            # Ensure DateTime is sortable
             TimeCreated     = [datetime]($xml.Event.System.TimeCreated.SystemTime ?? $e.TimeCreated)
             EventID         = [int]$id
             Image           = $data.Image ?? "System/Unknown"
@@ -51,7 +53,8 @@ function Get-SysmonEvents {
             }
         }
     }
-    return $parsed
+    # Return events sorted NEWEST to OLDEST
+    return $parsed | Sort-Object TimeCreated -Descending
 }
 
 # ------------------------------
@@ -61,7 +64,8 @@ function Get-EDRTreeView {
     param([object[]]$Events)
     if ($null -eq $Events) { return @() }
 
-    $results = foreach ($item in ($Events | Sort-Object TimeCreated)) {
+    # Ensure the tree builder respects the descending order
+    $results = foreach ($item in ($Events | Sort-Object TimeCreated -Descending)) {
         $visual = "$($item.TimeCreated.ToString('HH:mm:ss.fff')) | ID:$($item.EventID) | $($item.Image)`n ┗━━ $($item.Details)"
         
         [PSCustomObject]@{
@@ -96,7 +100,7 @@ function Build-HtmlReport {
 </head>
 <body>
     <div class="container">
-        <h2>Sysmon EDR Activity Report - $(Get-Date)</h2>
+        <h2>Sysmon EDR Activity Report (Newest First) - $(Get-Date)</h2>
         <table><thead><tr><th>Time</th><th>User</th><th>ID</th><th>Activity Tree</th></tr></thead><tbody>
 "@
     $Rows = foreach ($row in $Data) {
@@ -112,7 +116,7 @@ function Build-HtmlReport {
 $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Sysmon EDR Visualizer" Height="850" Width="1350" Background="#F0F2F5">
+        Title="Sysmon EDR Visualizer (Newest First)" Height="850" Width="1350" Background="#F0F2F5">
     <Grid Margin="15">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -175,10 +179,10 @@ $tbId = $window.FindName('TbId'); $tbSearch = $window.FindName('TbSearch')
 
 $script:RawData = @()
 
-# --- INITIAL PROMPT & LOAD ---
+# --- INITIAL PROMPT ---
 $window.Add_Loaded({
-    $msg = "Do you want to open the current sysmon events?`n`nWarning: The program may become temporarily unresponsive while processing live logs."
-    $response = [System.Windows.MessageBox]::Show($msg, "Load Live Logs", "YesNo", "Warning")
+    $msg = "Do you want to open the current sysmon events?`n`nNote: Logs will be sorted newest first."
+    $response = [System.Windows.MessageBox]::Show($msg, "Load Live Logs", "YesNo", "Question")
 
     if ($response -eq 'Yes') {
         $txtStatus.Text = "Status: Parsing live Sysmon logs..."
@@ -187,7 +191,7 @@ $window.Add_Loaded({
             [System.Windows.MessageBox]::Show("Could not access live logs. Ensure you are running as Administrator.")
         } else {
             $grid.ItemsSource = Get-EDRTreeView -Events $script:RawData
-            $txtStatus.Text = "Status: Loaded $($script:RawData.Count) live events."
+            $txtStatus.Text = "Status: Loaded $($script:RawData.Count) live events (Newest First)."
         }
     }
 })
@@ -197,6 +201,7 @@ $btnLoad.Add_Click({
     if ($dlg.ShowDialog()) {
         $script:RawData = Get-SysmonEvents -Path $dlg.FileName
         $grid.ItemsSource = Get-EDRTreeView -Events $script:RawData
+        $txtStatus.Text = "Status: Loaded from file (Newest First)."
     }
 })
 
@@ -213,6 +218,7 @@ $btnApply.Add_Click({
         if ($end) { if ($_.TimeCreated -ge $end) { $pass = $false } }
         $pass
     }
+    # Ensure final view maintains Newest First
     $results = Get-EDRTreeView -Events $filtered
     if ($searchFilt) { $results = $results | Where-Object { $_.ActivityTree -like "*$searchFilt*" } }
     $grid.ItemsSource = $results
@@ -231,11 +237,9 @@ $btnHtmlSave.Add_Click({
     if ($grid.ItemsSource) {
         $dlg = New-Object Microsoft.Win32.SaveFileDialog
         $dlg.Filter = "HTML Files (*.html)|*.html"
-        $dlg.FileName = "Sysmon_EDR_Report.html"
         if ($dlg.ShowDialog()) {
             $html = Build-HtmlReport -Data $grid.ItemsSource
             $html | Out-File -FilePath $dlg.FileName -Encoding utf8
-            [System.Windows.MessageBox]::Show("Report saved successfully.")
         }
     }
 })
