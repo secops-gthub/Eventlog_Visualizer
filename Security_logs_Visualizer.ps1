@@ -1,9 +1,13 @@
 <#
     Advanced EDR Multi-Source Visualizer - ULTIMATE EDITION
-    - ADDED: Dedicated columns and filters for Destination IP and DNS Queries
+    - ADDED: Smart Context Menu for VirusTotal (Hash, IP, and DNS lookups)
+    - KEEPS: Dedicated columns and filters for Destination IP and DNS Queries
     - KEEPS: Process Lineage (Parent-Child tracking with Visual Indentation)
-    - KEEPS: VirusTotal Context Menu, Cell Copying, HTML Export, Exit Button
+    - KEEPS: VirusTotal Browser-based lookups, Cell Copying, HTML Export, Exit Button
 #>
+
+# --- CONFIGURATION: Put your VirusTotal API Key here ---
+$script:VT_API_KEY = "YOUR_API_KEY_HERE"
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
@@ -279,7 +283,9 @@ $mainXaml = @"
                   FontFamily="Consolas" ClipboardCopyMode="ExcludeHeader">
             <DataGrid.ContextMenu>
                 <ContextMenu>
-                    <MenuItem x:Name="MiVirusTotal" Header="Check Hash on VirusTotal" />
+                    <MenuItem x:Name="MiVT_Hash" Header="Search Hash on VirusTotal" />
+                    <MenuItem x:Name="MiVT_IP" Header="Search Destination IP on VirusTotal" />
+                    <MenuItem x:Name="MiVT_DNS" Header="Search DNS Query on VirusTotal" />
                 </ContextMenu>
             </DataGrid.ContextMenu>
             <DataGrid.Columns>
@@ -320,18 +326,43 @@ if ($script:selectedLogs.Count -gt 0) {
 }
 
 # --- VIRUSTOTAL CONTEXT MENU LOGIC ---
-$window.FindName('MiVirusTotal').Add_Click({
+
+$window.FindName('MiVT_Hash').Add_Click({
     $selected = $grid.CurrentItem
-    if ($null -eq $selected -and $grid.SelectedCells.Count -gt 0) {
-        $selected = $grid.SelectedCells[0].Item
-    }
+    if ($null -eq $selected -and $grid.SelectedCells.Count -gt 0) { $selected = $grid.SelectedCells[0].Item }
     
     if ($null -ne $selected -and $selected.Hash -ne "N/A" -and ![string]::IsNullOrWhiteSpace($selected.Hash)) {
         $url = "https://www.virustotal.com/gui/file/$($selected.Hash)"
         Start-Process $url
         $txtStatus.Text = "Opening VirusTotal for hash: $($selected.Hash)"
     } else {
-        [System.Windows.MessageBox]::Show("No valid SHA256 hash found for this event.", "VirusTotal Lookup", 0, 48)
+        [System.Windows.MessageBox]::Show("No valid SHA256 Hash found for this event.", "VirusTotal Lookup", 0, 48)
+    }
+})
+
+$window.FindName('MiVT_IP').Add_Click({
+    $selected = $grid.CurrentItem
+    if ($null -eq $selected -and $grid.SelectedCells.Count -gt 0) { $selected = $grid.SelectedCells[0].Item }
+    
+    if ($null -ne $selected -and $selected.DestIP -ne "N/A" -and $selected.DestIP -ne "Local" -and ![string]::IsNullOrWhiteSpace($selected.DestIP)) {
+        $url = "https://www.virustotal.com/gui/ip-address/$($selected.DestIP)"
+        Start-Process $url
+        $txtStatus.Text = "Opening VirusTotal for IP: $($selected.DestIP)"
+    } else {
+        [System.Windows.MessageBox]::Show("No valid Destination IP found for this event.", "VirusTotal Lookup", 0, 48)
+    }
+})
+
+$window.FindName('MiVT_DNS').Add_Click({
+    $selected = $grid.CurrentItem
+    if ($null -eq $selected -and $grid.SelectedCells.Count -gt 0) { $selected = $grid.SelectedCells[0].Item }
+    
+    if ($null -ne $selected -and $selected.DNSQuery -ne "N/A" -and ![string]::IsNullOrWhiteSpace($selected.DNSQuery)) {
+        $url = "https://www.virustotal.com/gui/domain/$($selected.DNSQuery)"
+        Start-Process $url
+        $txtStatus.Text = "Opening VirusTotal for DNS: $($selected.DNSQuery)"
+    } else {
+        [System.Windows.MessageBox]::Show("No valid DNS Query found for this event.", "VirusTotal Lookup", 0, 48)
     }
 })
 
