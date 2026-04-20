@@ -25,13 +25,13 @@ A professional-grade security analysis tool that reconstructs disparate Windows 
 
         Windows Security: Decoded Logons (4624), Process Auditing (4688), Group Enumeration (4798), and Credential Reads (5379).
 
-    Persistent & Cumulative Loading: Append multiple .evtx or .xml files to a single session to track lateral movement across different machines and timeframes.
+    Persistent & Cumulative Loading: Append multiple .evtx files to a single session to track lateral movement across different machines and timeframes.
 
 📋 Requirements
 
     OS: Windows 10/11 or Windows Server 2016+.
 
-    PowerShell: Version 7.x (Recommended) or 5.1.
+    PowerShell: Version 7.x
 
     Permissions: Administrator privileges are required to access live local log streams.
 
