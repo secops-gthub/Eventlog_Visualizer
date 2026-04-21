@@ -1,7 +1,8 @@
 <#
-    Advanced EDR Multi-Source Visualizer - ULTIMATE EDITION v3.3
-    - ADDED: Support for Adv. Security FW XML Event IDs (2010, 2052, 2097)
-    - ADDED: Parsing for ModifyingApplication and ModifyingUser in FW Logs
+    Advanced EDR Multi-Source Visualizer - ULTIMATE EDITION v3.4.1
+    - FIXED: XAML loading error (removed invalid Padding property on StackPanel).
+    - ADDED: "Exclude N/A" UI checkboxes to instantly filter out empty network/hash data.
+    - RETAINS: Support for Adv. Security FW XML Event IDs (2010, 2052, 2097)
     - RETAINS: Full GUI, Process Pivot, Exports, VT Context Menu
     - RETAINS: WFP Event IDs (5152-5159, 5031) and W3C (.log) parsing
 #>
@@ -316,7 +317,7 @@ $selector.ShowDialog() | Out-Null
 $mainXaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="EDR Visualizer - Ultimate Edition v3.3" Height="900" Width="1580">
+        Title="EDR Visualizer - Ultimate Edition v3.4.1" Height="900" Width="1580">
     <Grid Margin="10">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         
@@ -342,10 +343,10 @@ $mainXaml = @"
             <WrapPanel>
                 <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter User:" FontSize="10"/><TextBox x:Name="TbUserFilt" Width="80" Height="25"/></StackPanel>
                 <StackPanel Margin="0,0,10,0"><TextBlock Text="Event ID:" FontSize="10"/><TextBox x:Name="TbIdFilt" Width="50" Height="25"/></StackPanel>
-                <StackPanel Margin="0,0,10,0"><TextBlock Text="Hash Search:" FontSize="10"/><TextBox x:Name="TbHashFilt" Width="100" Height="25"/></StackPanel>
+                <StackPanel Margin="0,0,10,0"><TextBlock Text="Hash Search:" FontSize="10"/><TextBox x:Name="TbHashFilt" Width="90" Height="25"/></StackPanel>
                 <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter IP:" FontSize="10"/><TextBox x:Name="TbIpFilt" Width="90" Height="25"/></StackPanel>
                 <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter DNS:" FontSize="10"/><TextBox x:Name="TbDnsFilt" Width="90" Height="25"/></StackPanel>
-                <StackPanel Margin="0,0,10,0"><TextBlock Text="FW Action:" FontSize="10"/><TextBox x:Name="TbActionFilt" Width="70" Height="25" ToolTip="ALLOW, DROP, or BLOCK"/></StackPanel>
+                <StackPanel Margin="0,0,10,0"><TextBlock Text="FW Action:" FontSize="10"/><TextBox x:Name="TbActionFilt" Width="60" Height="25" ToolTip="ALLOW, DROP, or BLOCK"/></StackPanel>
                 <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter Port:" FontSize="10"/><TextBox x:Name="TbPortFilt" Width="50" Height="25"/></StackPanel>
                 <StackPanel Margin="0,0,10,0">
                     <TextBlock Text="Date Range:" FontSize="10"/>
@@ -354,7 +355,17 @@ $mainXaml = @"
                         <DatePicker x:Name="DpEnd" Width="110" Margin="5,0,0,0"/>
                     </StackPanel>
                 </StackPanel>
-                <StackPanel Margin="0,0,10,0"><TextBlock Text="Activity Search:" FontSize="10"/><TextBox x:Name="TbTreeFilt" Width="130" Height="25"/></StackPanel>
+                <StackPanel Margin="0,0,10,0"><TextBlock Text="Activity Search:" FontSize="10"/><TextBox x:Name="TbTreeFilt" Width="120" Height="25"/></StackPanel>
+
+                <StackPanel Margin="0,0,10,0" VerticalAlignment="Bottom">
+                    <TextBlock Text="Exclude N/A:" FontSize="10" FontWeight="Bold" Margin="0,0,0,2"/>
+                    <StackPanel Orientation="Horizontal">
+                        <CheckBox x:Name="ChkHideNaUser" Content="User" FontSize="10" Margin="0,0,5,0"/>
+                        <CheckBox x:Name="ChkHideNaHash" Content="Hash" FontSize="10" Margin="0,0,5,0"/>
+                        <CheckBox x:Name="ChkHideNaIp" Content="IP" FontSize="10" Margin="0,0,5,0"/>
+                        <CheckBox x:Name="ChkHideNaDns" Content="DNS" FontSize="10"/>
+                    </StackPanel>
+                </StackPanel>
                 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
                     <Button x:Name="BtnApply" Content="⚡ Apply" Width="60" Height="25" Background="#0078D4" Foreground="White"/>
@@ -506,13 +517,19 @@ $window.FindName('BtnApply').Add_Click({
     $portFilt = $window.FindName('TbPortFilt').Text
     $start = $window.FindName('DpStart').SelectedDate
     $end   = $window.FindName('DpEnd').SelectedDate
+    
+    $hideNaUser = [bool]$window.FindName('ChkHideNaUser').IsChecked
+    $hideNaHash = [bool]$window.FindName('ChkHideNaHash').IsChecked
+    $hideNaIp   = [bool]$window.FindName('ChkHideNaIp').IsChecked
+    $hideNaDns  = [bool]$window.FindName('ChkHideNaDns').IsChecked
 
-    # Reset if all filters are empty
+    # Reset if all text filters are empty and checkboxes are unchecked
     if ([string]::IsNullOrWhiteSpace($uFilt) -and [string]::IsNullOrWhiteSpace($iFilt) -and 
         [string]::IsNullOrWhiteSpace($tFilt) -and [string]::IsNullOrWhiteSpace($hFilt) -and 
         [string]::IsNullOrWhiteSpace($ipFilt) -and [string]::IsNullOrWhiteSpace($dnsFilt) -and 
         [string]::IsNullOrWhiteSpace($actFilt) -and [string]::IsNullOrWhiteSpace($portFilt) -and 
-        $null -eq $start -and $null -eq $end) {
+        $null -eq $start -and $null -eq $end -and 
+        -not $hideNaUser -and -not $hideNaHash -and -not $hideNaIp -and -not $hideNaDns) {
         $grid.ItemsSource = Get-EDRTreeView -Events $script:RawData
         return
     }
@@ -527,7 +544,11 @@ $window.FindName('BtnApply').Add_Click({
         ([string]::IsNullOrWhiteSpace($actFilt) -or $_.Details -match "(?i)$actFilt") -and
         ($null -eq $start -or $_.TimeCreated -ge $start) -and
         ($null -eq $end -or $_.TimeCreated -le $end.AddDays(1)) -and
-        ([string]::IsNullOrWhiteSpace($tFilt) -or $_.Details -like "*$tFilt*" -or $_.Image -like "*$tFilt*")
+        ([string]::IsNullOrWhiteSpace($tFilt) -or $_.Details -like "*$tFilt*" -or $_.Image -like "*$tFilt*") -and
+        (-not $hideNaUser -or $_.User -ne "N/A") -and
+        (-not $hideNaHash -or $_.Hash -ne "N/A") -and
+        (-not $hideNaIp -or $_.DestIP -ne "N/A") -and
+        (-not $hideNaDns -or $_.DNSQuery -ne "N/A")
     }
     $grid.ItemsSource = Get-EDRTreeView -Events $filtered
 })
@@ -543,6 +564,10 @@ $window.FindName('BtnClearFilter').Add_Click({
     $window.FindName('TbPortFilt').Text = ""
     $window.FindName('DpStart').SelectedDate = $null
     $window.FindName('DpEnd').SelectedDate = $null
+    $window.FindName('ChkHideNaUser').IsChecked = $false
+    $window.FindName('ChkHideNaHash').IsChecked = $false
+    $window.FindName('ChkHideNaIp').IsChecked = $false
+    $window.FindName('ChkHideNaDns').IsChecked = $false
     $grid.ItemsSource = Get-EDRTreeView -Events $script:RawData
     $txtStatus.Text = "Filters cleared."
 })
