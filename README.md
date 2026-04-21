@@ -1,77 +1,72 @@
-Multi-Source EDR Visualizer (Sysmon, Defender, & Security)
+Multi-Source EDR Visualizer (Ultimate Edition v3.3)
 
-A professional-grade security analysis tool that reconstructs disparate Windows event logs into a hierarchical, EDR-style process tree. This version features an advanced Lineage Engine, multi-vector Threat Intel lookups, UI Virtualization for massive datasets, and high-performance parsing architecture for deep forensic investigations.
+A professional-grade security analysis and digital forensics (DFIR) tool that reconstructs disparate Windows event logs into a hierarchical, EDR-style process tree. This version features an advanced Lineage Engine, high-performance UI Virtualization, and a newly expanded Network & Firewall Forensic Suite for deep traffic investigation.
 🚀 Key Features
+🛡️ Enhanced Firewall & Network Suite (New)
 
-    UI Virtualization Engine (New): Built to handle massive forensic files. The DataGrid dynamically renders only the visible rows, allowing you to load and scroll through 100,000+ events with zero UI lag or freezing.
+    Deep WFP Parsing: Natively decodes Windows Filtering Platform (WFP) connection events (IDs 5152–5159) from the Security log, revealing hidden "Allow," "Drop," and "Block" actions.
 
-    Process Pivot / Execution Isolation (New): Right-click any process to instantly "Pivot." This automatically filters the entire dataset to isolate that specific process's execution chain (using its unique PGUID), revealing everything it spawned and its network/DNS activity.
+    Advanced Security Log Support: Automatically parses Firewall Rule modifications, Profile changes, and Rule Evaluations (IDs 2004, 2010, 2097) from the Advanced Security log.
 
-    Structured Data Exports (New): Instantly export your parsed, filtered investigation data to CSV or JSON. Perfect for importing findings directly into SIEMs (Splunk, Microsoft Sentinel), Excel, or custom Python scripts.
+    Raw W3C Log Ingestion: Support for importing raw pfirewall.log text files. The script automatically converts these flat logs into structured objects for the Process Tree.
 
-    Process Tree Lineage: Automatically correlates Parent and Child processes using unique GUIDs and PIDs. The view is sorted Ascending (Oldest to Newest), allowing analysts to follow the flow of execution down the screen with visual indentation (┗━━).
+    Specialized Networking Filters: Dedicated UI fields for FW Action (Allow/Block) and Filter Port to isolate specific lateral movement or C2 beacons.
 
-    Expanded VirusTotal Integration: The smart right-click context menu supports instant intelligence lookups for File Hashes, Destination IPs, and DNS Queries, launching the specific VirusTotal report page for that indicator.
+⚡ Performance & Forensics
 
-    Dedicated Network Telemetry: Individual columns for Dest IP and DNS Query with dedicated real-time filters to isolate Command & Control (C2) traffic or data exfiltration attempts.
+    UI Virtualization Engine: Handles massive forensic datasets (100k+ rows) with zero lag by dynamically rendering only the rows currently visible on screen.
 
-    Universal Property Mapping: Uses advanced XML-based parsing to correctly extract "Named" properties (like TargetUserName, IpAddress, and CommandLine) from Security and Sysmon logs that typically appear blank in standard viewers.
+    Process Pivot / Execution Isolation: Right-click any process to instantly isolate its entire execution chain (using its unique PGUID), revealing every child process, network connection, and DNS query associated with that specific execution path.
 
-    SHA256 Hash Visibility: Automatically isolates SHA256 hashes from Sysmon events. Long hashes are truncated for cleanliness but are viewable via Tooltip hover.
+    Process Tree Lineage: Automatically correlates Parent/Child processes with visual indentation (┗━━) and chronological sorting.
 
-    GUI Cell Copying: High-flexibility selection (Cell-level) allows you to click any data point and press Ctrl+C to copy it directly for external lookups or documentation.
+🔍 Threat Intelligence & Exports
 
-    Multi-Source Ingestion:
+    Multi-Vector VirusTotal Integration: Smart context menus allow for instant intelligence lookups of File Hashes, Destination IPs, and DNS Queries.
 
-        Sysmon: Process behavior (ID 1), network telemetry (ID 3), and DNS queries (ID 22).
+    Structured Data Exports: Export your filtered investigation findings to CSV, JSON, or CSS-Styled HTML Reports for SIEM ingestion (Splunk, Sentinel) or peer review.
 
-        Windows Defender: Malware detection and remediation history with high-fidelity path parsing.
-
-        Windows Security: Decoded Logons (4624), Process Auditing (4688), Group Enumeration (4798), and Credential Reads (5379).
-
-    Persistent & Cumulative Loading: Append multiple .evtx or .xml files to a single session to track lateral movement across different machines and timeframes.
+    Universal Property Mapping: Uses XML-based parsing to extract "Named" properties (TargetUserName, IpAddress, CommandLine) that are often missing in standard Windows Event Viewer.
 
 📋 Requirements
 
     OS: Windows 10/11 or Windows Server 2016+.
 
-    PowerShell: Version 7.x
+    PowerShell: Version 5.1 or 7.x.
 
-    Permissions: Administrator privileges are required to access live local log streams.
+    Permissions: Administrator privileges (required for live log access; not required for manual file analysis).
 
 🛠️ How It Works
 1. Source Selection
 
-Upon launch, choose to pull Live Logs (last 24 hours) from the local machine or proceed to the dashboard for Manual Import of forensic .evtx files.
-2. The Dashboard & Threat Hunting
+Upon launch, choose to pull Live Logs (last 24 hours) from the local machine or proceed to the dashboard for Manual Import of forensic .evtx, .xml, or .log files.
+2. Multi-Source Ingestion
 
-    Add Log: Merge new forensic files into your current investigation timeline.
+    Sysmon: Process behavior (ID 1), network telemetry (ID 3), and DNS queries (ID 22).
 
-    Process Lineage: Processes are visually grouped under their parents. Reading from top to bottom shows the chronological "birth" and expansion of a process tree.
+    Windows Defender: Malware detections and remediation history with high-fidelity path parsing.
 
-    Process Pivot: Find a suspicious event, right-click, and select "Pivot on this Process" to instantly strip away all unrelated system noise.
+    Windows Firewall: Connection blocks, rule modifications, and profile changes.
 
-    Enhanced Filtering: Specialized search boxes for User, Event ID, Hash, Destination IP, DNS Query, or Date Range.
+    Windows Security: Decoded Logons (4624), Process Auditing (4688), Group Enumeration (4798), and Credential Reads (5379).
 
-    Clear Filter: A dedicated button to instantly reset all search fields and restore the full dataset.
+3. Threat Hunting & Reporting
 
-3. Reporting & Integrations
+    Enhanced Filtering: Hunt using Usernames, Event IDs, Hashes, IPs, DNS Queries, Firewall Actions, Ports, or Date Ranges.
 
-    Smart Context Menu: Right-click an event to perform targeted VirusTotal lookups based on available data (Hash, IP, or Domain).
+    Smart Context Menu: Perform targeted VirusTotal lookups based on the selected cell's data.
 
-    Open / Save HTML: Generates a CSS-styled report and launches it in your browser, or saves it as a portable file for peer review.
+    Reporting: Generate a portable, styled HTML report for documentation and case filing.
 
-    Save CSV / JSON: Exports the currently filtered view into structured data formats for external tooling and SIEM ingestion.
+📥 Installation & Usage
 
-    Exit: Safely close the session and clear temporary memory.
+    Download Security_logs_analyzer.ps1.
 
-📥 Installation
-
-    Download Sysmon_Visualizer.ps1.
+    (Optional) Edit the script to add your VirusTotal API Key in the $script:VT_API_KEY field.
 
     Open PowerShell as Administrator.
 
     Run the script:
     PowerShell
 
-    .\Sysmon_Visualizer.ps1
+    .\Security_logs_analyzer.ps1
