@@ -1,9 +1,9 @@
 <#
-    Advanced EDR Multi-Source Visualizer - ULTIMATE EDITION v2
-    - ADDED: UI Virtualization (Handles 100k+ rows with zero lag)
-    - ADDED: Process Pivot (Right-click to isolate a process execution chain)
-    - ADDED: Export to CSV and JSON for SIEM/Spreadsheet ingestion
-    - KEEPS: VirusTotal Context Menu, Tree Lineage, HTML Export, Exit Button
+    Advanced EDR Multi-Source Visualizer - ULTIMATE EDITION v3.3
+    - ADDED: Support for Adv. Security FW XML Event IDs (2010, 2052, 2097)
+    - ADDED: Parsing for ModifyingApplication and ModifyingUser in FW Logs
+    - RETAINS: Full GUI, Process Pivot, Exports, VT Context Menu
+    - RETAINS: WFP Event IDs (5152-5159, 5031) and W3C (.log) parsing
 #>
 
 # --- CONFIGURATION: Put your VirusTotal API Key here ---
@@ -18,6 +18,41 @@ function Get-CombinedEDREvents {
     param([string]$Path = $null, [string[]]$LiveLogs = @())
     $events = @()
     $lookbackTime = (Get-Date).AddDays(-1) 
+
+    # --- FIREWALL .LOG FILE PARSER (W3C Format) ---
+    if ($Path -and $Path.EndsWith(".log")) {
+        $logLines = Get-Content $Path -ErrorAction SilentlyContinue | Where-Object { $_ -notmatch "^#" -and ![string]::IsNullOrWhiteSpace($_) }
+        $logData = foreach ($line in $logLines) {
+            $parts = $line -split '\s+'
+            if ($parts.Count -ge 8) {
+                $timeString = "$($parts[0]) $($parts[1])"
+                $timeCreated = [datetime]::MinValue
+                if (-not [datetime]::TryParse($timeString, [ref]$timeCreated)) { $timeCreated = Get-Date }
+
+                $action = $parts[2]
+                $proto  = $parts[3]
+                $srcIp  = $parts[4]
+                $dstIp  = $parts[5]
+                $srcPrt = $parts[6]
+                $dstPrt = $parts[7]
+
+                [PSCustomObject]@{
+                    TimeCreated = $timeCreated
+                    EventID     = "W3C-FW"
+                    Provider    = "pfirewall.log"
+                    Image       = "Network/Firewall"
+                    User        = "N/A"
+                    Hash        = "N/A"
+                    DestIP      = $dstIp
+                    DNSQuery    = "N/A"
+                    Details     = "🛡️ FW $($action.ToUpper()): $srcIp`:$srcPrt -> $dstIp`:$dstPrt | Proto: $proto"
+                    PGUID       = $null
+                    PPGUID      = $null
+                }
+            }
+        }
+        return $logData
+    }
 
     try {
         if ($Path) {
@@ -59,8 +94,13 @@ function Get-CombinedEDREvents {
             }
         }
         
-        $detectedUser = $data.TargetUserName ?? $data.SubjectUserName ?? $data.User ?? "N/A"
-        $imagePath = $data.NewProcessName ?? $data.Image ?? $data.ProcessName ?? "System/EDR"
+        # Parse User
+        $detectedUser = $data.TargetUserName ?? $data.SubjectUserName ?? $data.User ?? $data.ModifyingUser ?? "N/A"
+        if ($detectedUser -eq "N/A" -and $eventNode.System.Security.UserID) { $detectedUser = $eventNode.System.Security.UserID }
+
+        # Parse Image / Application
+        $imagePath = $data.NewProcessName ?? $data.Image ?? $data.ProcessName ?? $data.Application ?? $data.ModifyingApplication ?? $data.ApplicationPath ?? "System/EDR"
+        if ([string]::IsNullOrWhiteSpace($imagePath)) { $imagePath = "System/EDR" }
         
         # --- PROCESS LINEAGE EXTRACTION ---
         $pGuid  = $data.ProcessGuid ?? $data.NewProcessId ?? $data.ProcessId
@@ -73,14 +113,29 @@ function Get-CombinedEDREvents {
         # --- NETWORK/DNS EXTRACTION ---
         $destIp = "N/A"
         $dnsQuery = "N/A"
-
         $details = ""
+
         if ($provider -like "*Windows Defender*") {
             $threat = $data.'Threat Name' ?? $data.ThreatName ?? "Unknown Threat"
             $action = $data.'Action Name' ?? $data.ActionName ?? "Action Taken"
             $path = $data.Path ?? $data.'Resource Path' ?? "Unknown Path"
             $details = "⚠️ DEFENDER: $action on $threat | Path: $path"
-            if ($data.'Process Name') { $imagePath = $data.'Process Name' }
+        } elseif ($provider -like "*Windows Firewall*") {
+            $ruleName = $data.RuleName ?? $data.ModifyingRuleName ?? "Unknown Rule"
+            switch($id) {
+                2004 { $details = "🛡️ FW RULE ADDED: $ruleName" }
+                2005 { $details = "🛡️ FW RULE MODIFIED: $ruleName" }
+                2006 { $details = "🛡️ FW RULE DELETED: $ruleName" }
+                2010 { $details = "🛡️ FW PROFILE CHANGED: $($data.InterfaceName) (Profile $($data.OldProfile) -> $($data.NewProfile))" }
+                2033 { $details = "⛔ FW BLOCK (EVAL): Rule $ruleName" }
+                2052 { $details = "🛡️ FW RULE DISABLED/CHANGED: $ruleName" }
+                2097 { 
+                    $dir = if ($data.Direction -eq "1") { "In" } elseif ($data.Direction -eq "2") { "Out" } else { $data.Direction }
+                    $act = if ($data.Action -eq "2") { "Block" } elseif ($data.Action -eq "3") { "Allow" } else { $data.Action }
+                    $details = "🛡️ FW RULE UPDATE: $ruleName | Dir: $dir | Action: $act" 
+                }
+                default { $details = "🛡️ FW CONFIG: Action on Rule $ruleName | ID: $id" }
+            }
         } elseif ($provider -like "*Security-Auditing*") {
             switch($id) {
                 4624 { 
@@ -89,6 +144,29 @@ function Get-CombinedEDREvents {
                 }
                 4688 { $details = "🚀 PROCESS: $($data.NewProcessName)" }
                 4798 { $details = "🔍 GROUP: Enumerate groups for $($data.TargetUserName)" }
+                5031 { $details = "⛔ FW SERVICE BLOCK: App $($data.Application) blocked from incoming connections." }
+                
+                5152 {
+                    $destIp = $data.DestAddress
+                    $details = "⛔ WFP BLOCK: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)"
+                }
+                5153 {
+                    $destIp = $data.DestAddress
+                    $details = "⛔ WFP BLOCK: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)"
+                }
+                5154 { $details = "✅ WFP LISTEN PERMIT: App listening on port $($data.SourcePort)" }
+                5155 { $details = "⛔ WFP LISTEN BLOCK: App blocked on port $($data.SourcePort)" }
+                5156 {
+                    $destIp = $data.DestAddress
+                    $details = "✅ WFP ALLOW: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)"
+                }
+                5157 {
+                    $destIp = $data.DestAddress
+                    $details = "⛔ WFP DROP: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)"
+                }
+                5158 { $details = "✅ WFP BIND PERMIT: App bound to port $($data.SourcePort)" }
+                5159 { $details = "⛔ WFP BIND BLOCK: App blocked binding to port $($data.SourcePort)" }
+                
                 5379 { $details = "📂 CRED: Read by $($data.SubjectUserName) for $($data.TargetUserName)" }
                 default { $details = "Security ID $id" }
             }
@@ -135,13 +213,11 @@ function Get-EDRTreeView {
     param([object[]]$Events)
     if ($null -eq $Events) { return @() }
 
-    # Map all events by their unique Process ID
     $ProcessMap = @{}
     foreach ($e in $Events) {
         if ($e.PGUID) { $ProcessMap[$e.PGUID] = $e }
     }
 
-    # Sort ASCENDING (Oldest first) so time flows downwards. 
     $results = foreach ($item in ($Events | Sort-Object TimeCreated)) {
         $depth = 0
         $current = $item
@@ -163,9 +239,9 @@ function Get-EDRTreeView {
             DNSQuery     = $item.DNSQuery
             ActivityTree = "$indent$treeMarker ID:$($item.EventID) | $($item.Image)`n$indent    ┗━━ $($item.Details)"
             RawDate      = $item.TimeCreated
-            # Hidden fields for pivoting
             PGUID        = $item.PGUID
             PPGUID       = $item.PPGUID
+            Details      = $item.Details
         }
     }
     return $results
@@ -205,15 +281,16 @@ function ConvertTo-HtmlReport {
 $selectorXaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Source Selection" Height="260" Width="360" WindowStartupLocation="CenterScreen" Topmost="True">
+        Title="Source Selection" Height="300" Width="360" WindowStartupLocation="CenterScreen" Topmost="True">
     <StackPanel Margin="20">
         <TextBlock Text="Select Live Logs (Last 24h):" FontWeight="Bold" FontSize="14" Margin="0,0,0,10"/>
-        <CheckBox x:Name="ChkSecurity" Content="Windows Security Logs" IsChecked="False" Margin="0,5"/>
+        <CheckBox x:Name="ChkSecurity" Content="Windows Security Logs (Includes WFP)" IsChecked="False" Margin="0,5"/>
         <CheckBox x:Name="ChkDefender" Content="Windows Defender Logs" IsChecked="False" Margin="0,5"/>
         <CheckBox x:Name="ChkSysmon" Content="Sysmon Logs" IsChecked="False" Margin="0,5"/>
+        <CheckBox x:Name="ChkFirewall" Content="Adv. Security Firewall Logs" IsChecked="False" Margin="0,5"/>
         <UniformGrid Columns="2" Margin="0,15,0,0">
             <Button x:Name="BtnLive" Content="⚡ Load Selected" Height="35" Margin="0,0,5,0" Background="#0078D4" Foreground="White"/>
-            <Button x:Name="BtnManual" Content="📂 Manual Import" Height="35"/>
+            <Button x:Name="BtnManual" Content="📂 Manual Import (.log/.xml)" Height="35"/>
         </UniformGrid>
     </StackPanel>
 </Window>
@@ -227,6 +304,7 @@ $selector.FindName('BtnLive').Add_Click({
     if ($selector.FindName('ChkSecurity').IsChecked) { $script:selectedLogs += "Security" }
     if ($selector.FindName('ChkDefender').IsChecked) { $script:selectedLogs += "Microsoft-Windows-Windows Defender/Operational" }
     if ($selector.FindName('ChkSysmon').IsChecked)   { $script:selectedLogs += "Microsoft-Windows-Sysmon/Operational" }
+    if ($selector.FindName('ChkFirewall').IsChecked) { $script:selectedLogs += "Microsoft-Windows-Windows Firewall With Advanced Security/Firewall" }
     $selector.Close()
 })
 $selector.FindName('BtnManual').Add_Click({ $selector.Close() })
@@ -238,7 +316,7 @@ $selector.ShowDialog() | Out-Null
 $mainXaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="EDR Visualizer - Ultimate Edition v2" Height="900" Width="1580">
+        Title="EDR Visualizer - Ultimate Edition v3.3" Height="900" Width="1580">
     <Grid Margin="10">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         
@@ -262,11 +340,13 @@ $mainXaml = @"
 
         <Border Grid.Row="1" Background="#E9ECEF" Padding="10" CornerRadius="5" Margin="0,0,0,10">
             <WrapPanel>
-                <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter User:" FontSize="10"/><TextBox x:Name="TbUserFilt" Width="90" Height="25"/></StackPanel>
+                <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter User:" FontSize="10"/><TextBox x:Name="TbUserFilt" Width="80" Height="25"/></StackPanel>
                 <StackPanel Margin="0,0,10,0"><TextBlock Text="Event ID:" FontSize="10"/><TextBox x:Name="TbIdFilt" Width="50" Height="25"/></StackPanel>
-                <StackPanel Margin="0,0,10,0"><TextBlock Text="Hash Search:" FontSize="10"/><TextBox x:Name="TbHashFilt" Width="130" Height="25"/></StackPanel>
-                <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter IP:" FontSize="10"/><TextBox x:Name="TbIpFilt" Width="100" Height="25"/></StackPanel>
-                <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter DNS:" FontSize="10"/><TextBox x:Name="TbDnsFilt" Width="120" Height="25"/></StackPanel>
+                <StackPanel Margin="0,0,10,0"><TextBlock Text="Hash Search:" FontSize="10"/><TextBox x:Name="TbHashFilt" Width="100" Height="25"/></StackPanel>
+                <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter IP:" FontSize="10"/><TextBox x:Name="TbIpFilt" Width="90" Height="25"/></StackPanel>
+                <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter DNS:" FontSize="10"/><TextBox x:Name="TbDnsFilt" Width="90" Height="25"/></StackPanel>
+                <StackPanel Margin="0,0,10,0"><TextBlock Text="FW Action:" FontSize="10"/><TextBox x:Name="TbActionFilt" Width="70" Height="25" ToolTip="ALLOW, DROP, or BLOCK"/></StackPanel>
+                <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter Port:" FontSize="10"/><TextBox x:Name="TbPortFilt" Width="50" Height="25"/></StackPanel>
                 <StackPanel Margin="0,0,10,0">
                     <TextBlock Text="Date Range:" FontSize="10"/>
                     <StackPanel Orientation="Horizontal">
@@ -274,11 +354,11 @@ $mainXaml = @"
                         <DatePicker x:Name="DpEnd" Width="110" Margin="5,0,0,0"/>
                     </StackPanel>
                 </StackPanel>
-                <StackPanel Margin="0,0,10,0"><TextBlock Text="Activity Search:" FontSize="10"/><TextBox x:Name="TbTreeFilt" Width="160" Height="25"/></StackPanel>
+                <StackPanel Margin="0,0,10,0"><TextBlock Text="Activity Search:" FontSize="10"/><TextBox x:Name="TbTreeFilt" Width="130" Height="25"/></StackPanel>
                 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
-                    <Button x:Name="BtnApply" Content="⚡ Apply" Width="70" Height="35" Background="#0078D4" Foreground="White"/>
-                    <Button x:Name="BtnClearFilter" Content="🔄 Clear Filter" Width="85" Height="35" Margin="5,0,0,0" Background="#6c757d" Foreground="White"/>
+                    <Button x:Name="BtnApply" Content="⚡ Apply" Width="60" Height="25" Background="#0078D4" Foreground="White"/>
+                    <Button x:Name="BtnClearFilter" Content="🔄 Clear" Width="60" Height="25" Margin="5,0,0,0" Background="#6c757d" Foreground="White"/>
                 </StackPanel>
             </WrapPanel>
         </Border>
@@ -300,7 +380,7 @@ $mainXaml = @"
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="170" SortMemberPath="RawDate"/>
                 <DataGridTextColumn Header="User" Binding="{Binding User}" Width="120"/>
-                <DataGridTextColumn Header="ID" Binding="{Binding EventID}" Width="50"/>
+                <DataGridTextColumn Header="ID" Binding="{Binding EventID}" Width="60"/>
                 <DataGridTextColumn Header="SHA256 Hash" Binding="{Binding Hash}" Width="150">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock"><Setter Property="TextTrimming" Value="CharacterEllipsis"/><Setter Property="ToolTip" Value="{Binding Hash}"/></Style>
@@ -406,6 +486,7 @@ $window.FindName('BtnSaveJSON').Add_Click({
 
 $window.FindName('BtnLoad').Add_Click({
     $dlg = [Microsoft.Win32.OpenFileDialog]::new()
+    $dlg.Filter = "Log and Event Files (*.xml;*.evtx;*.log)|*.xml;*.evtx;*.log|All Files (*.*)|*.*"
     if ($dlg.ShowDialog()) {
         $newData = Get-CombinedEDREvents -Path $dlg.FileName
         $script:RawData += $newData
@@ -421,6 +502,8 @@ $window.FindName('BtnApply').Add_Click({
     $ipFilt = $window.FindName('TbIpFilt').Text
     $dnsFilt = $window.FindName('TbDnsFilt').Text
     $tFilt = $window.FindName('TbTreeFilt').Text
+    $actFilt = $window.FindName('TbActionFilt').Text
+    $portFilt = $window.FindName('TbPortFilt').Text
     $start = $window.FindName('DpStart').SelectedDate
     $end   = $window.FindName('DpEnd').SelectedDate
 
@@ -428,6 +511,7 @@ $window.FindName('BtnApply').Add_Click({
     if ([string]::IsNullOrWhiteSpace($uFilt) -and [string]::IsNullOrWhiteSpace($iFilt) -and 
         [string]::IsNullOrWhiteSpace($tFilt) -and [string]::IsNullOrWhiteSpace($hFilt) -and 
         [string]::IsNullOrWhiteSpace($ipFilt) -and [string]::IsNullOrWhiteSpace($dnsFilt) -and 
+        [string]::IsNullOrWhiteSpace($actFilt) -and [string]::IsNullOrWhiteSpace($portFilt) -and 
         $null -eq $start -and $null -eq $end) {
         $grid.ItemsSource = Get-EDRTreeView -Events $script:RawData
         return
@@ -439,6 +523,8 @@ $window.FindName('BtnApply').Add_Click({
         ([string]::IsNullOrWhiteSpace($hFilt) -or $_.Hash -like "*$hFilt*") -and
         ([string]::IsNullOrWhiteSpace($ipFilt) -or $_.DestIP -like "*$ipFilt*") -and
         ([string]::IsNullOrWhiteSpace($dnsFilt) -or $_.DNSQuery -like "*$dnsFilt*") -and
+        ([string]::IsNullOrWhiteSpace($portFilt) -or $_.Details -like "*:$portFilt*") -and
+        ([string]::IsNullOrWhiteSpace($actFilt) -or $_.Details -match "(?i)$actFilt") -and
         ($null -eq $start -or $_.TimeCreated -ge $start) -and
         ($null -eq $end -or $_.TimeCreated -le $end.AddDays(1)) -and
         ([string]::IsNullOrWhiteSpace($tFilt) -or $_.Details -like "*$tFilt*" -or $_.Image -like "*$tFilt*")
@@ -453,6 +539,8 @@ $window.FindName('BtnClearFilter').Add_Click({
     $window.FindName('TbIpFilt').Text = ""
     $window.FindName('TbDnsFilt').Text = ""
     $window.FindName('TbTreeFilt').Text = ""
+    $window.FindName('TbActionFilt').Text = ""
+    $window.FindName('TbPortFilt').Text = ""
     $window.FindName('DpStart').SelectedDate = $null
     $window.FindName('DpEnd').SelectedDate = $null
     $grid.ItemsSource = Get-EDRTreeView -Events $script:RawData
