@@ -1,32 +1,36 @@
-Multi-Source EDR Visualizer (Ultimate Edition v3.3)
+Multi-Source EDR Visualizer (Ultimate Edition v3.4.1)
 
-A professional-grade security analysis and digital forensics (DFIR) tool that reconstructs disparate Windows event logs into a hierarchical, EDR-style process tree. This version features an advanced Lineage Engine, high-performance UI Virtualization, and a newly expanded Network & Firewall Forensic Suite for deep traffic investigation.
+A professional-grade security analysis and digital forensics (DFIR) tool that reconstructs disparate Windows event logs into a hierarchical, EDR-style process tree. Version 3.4.1 introduces a high-performance Noise Reduction Engine and expanded support for Advanced Firewall Telemetry, making it one of the most comprehensive open-source log visualizers for incident responders.
 🚀 Key Features
-🛡️ Enhanced Firewall & Network Suite (New)
+🛠️ Noise Reduction & "Exclude N/A" Engine (New)
 
-    Deep WFP Parsing: Natively decodes Windows Filtering Platform (WFP) connection events (IDs 5152–5159) from the Security log, revealing hidden "Allow," "Drop," and "Block" actions.
+    Instant De-Clutter: Use the new UI checkboxes to instantly strip out logs with empty data. Filter out events missing Usernames, File Hashes, Destination IPs, or DNS Queries to focus only on actionable intelligence.
 
-    Advanced Security Log Support: Automatically parses Firewall Rule modifications, Profile changes, and Rule Evaluations (IDs 2004, 2010, 2097) from the Advanced Security log.
+    Dynamic Refinement: Apply exclusions on top of existing keyword filters to isolate high-fidelity process executions and network beacons.
 
-    Raw W3C Log Ingestion: Support for importing raw pfirewall.log text files. The script automatically converts these flat logs into structured objects for the Process Tree.
+🛡️ Advanced Firewall & Network Forensics (New)
 
-    Specialized Networking Filters: Dedicated UI fields for FW Action (Allow/Block) and Filter Port to isolate specific lateral movement or C2 beacons.
+    WFP Deep Parsing: Decodes Windows Filtering Platform (WFP) connection events (IDs 5152–5159) from the Security log to reveal "Allow," "Drop," and "Block" actions.
+
+    Firewall Rule Evaluation: Specifically updated to parse Advanced Security XML exports (IDs 2004, 2010, 2052, 2097).
+
+    Attribute Extraction: Automatically identifies ModifyingApplication, Direction (Inbound/Outbound), and Action (Permit/Block) from raw rule evaluation data.
+
+    W3C Log Ingestion: Support for importing raw pfirewall.log text files, integrating flat log data into the hierarchical process tree.
 
 ⚡ Performance & Forensics
 
-    UI Virtualization Engine: Handles massive forensic datasets (100k+ rows) with zero lag by dynamically rendering only the rows currently visible on screen.
+    UI Virtualization Engine: Optimized to handle 100,000+ rows with zero lag by dynamically rendering only visible rows.
 
-    Process Pivot / Execution Isolation: Right-click any process to instantly isolate its entire execution chain (using its unique PGUID), revealing every child process, network connection, and DNS query associated with that specific execution path.
+    Process Pivot / Execution Isolation: Right-click any process to "Pivot." This isolates the specific process execution chain (via PGUID), showing every child process and network connection associated with that specific instance.
 
-    Process Tree Lineage: Automatically correlates Parent/Child processes with visual indentation (┗━━) and chronological sorting.
+    Process Tree Lineage: Correlates Parent/Child relationships with visual indentation (┗━━) and oldest-to-newest chronological sorting.
 
-🔍 Threat Intelligence & Exports
+🔍 Threat Intelligence & Reporting
 
-    Multi-Vector VirusTotal Integration: Smart context menus allow for instant intelligence lookups of File Hashes, Destination IPs, and DNS Queries.
+    Multi-Vector VirusTotal Integration: Right-click context menus for instant lookups of File Hashes, Destination IPs, and DNS Queries.
 
-    Structured Data Exports: Export your filtered investigation findings to CSV, JSON, or CSS-Styled HTML Reports for SIEM ingestion (Splunk, Sentinel) or peer review.
-
-    Universal Property Mapping: Uses XML-based parsing to extract "Named" properties (TargetUserName, IpAddress, CommandLine) that are often missing in standard Windows Event Viewer.
+    Structured Data Exports: Save findings to CSV, JSON, or professional CSS-Styled HTML Reports for SIEM ingestion or case documentation.
 
 📋 Requirements
 
@@ -34,39 +38,46 @@ A professional-grade security analysis and digital forensics (DFIR) tool that re
 
     PowerShell: Version 5.1 or 7.x.
 
-    Permissions: Administrator privileges (required for live log access; not required for manual file analysis).
+    Permissions: Administrator privileges are required only for Live Log access.
 
 🛠️ How It Works
-1. Source Selection
+1. Ingestion
 
-Upon launch, choose to pull Live Logs (last 24 hours) from the local machine or proceed to the dashboard for Manual Import of forensic .evtx, .xml, or .log files.
-2. Multi-Source Ingestion
+Choose to pull Live Logs (last 24 hours) or manually import forensic files:
 
-    Sysmon: Process behavior (ID 1), network telemetry (ID 3), and DNS queries (ID 22).
+    .evtx / .xml: Standard Windows Event Logs.
 
-    Windows Defender: Malware detections and remediation history with high-fidelity path parsing.
+    .log: W3C Standard Firewall Logs.
 
-    Windows Firewall: Connection blocks, rule modifications, and profile changes.
+2. Multi-Source Correlation
 
-    Windows Security: Decoded Logons (4624), Process Auditing (4688), Group Enumeration (4798), and Credential Reads (5379).
+The engine automatically maps properties across:
 
-3. Threat Hunting & Reporting
+    Sysmon: IDs 1 (Process), 3 (Network), and 22 (DNS).
 
-    Enhanced Filtering: Hunt using Usernames, Event IDs, Hashes, IPs, DNS Queries, Firewall Actions, Ports, or Date Ranges.
+    Windows Defender: Malware detections and path parsing.
 
-    Smart Context Menu: Perform targeted VirusTotal lookups based on the selected cell's data.
+    Windows Firewall: Advanced Security rule changes and WFP connection drops.
 
-    Reporting: Generate a portable, styled HTML report for documentation and case filing.
+    Windows Security: Logons (4624), Process Auditing (4688), and Credential Reads (5379).
+
+3. The Hunting Dashboard
+
+    Filters: Hunt by User, ID, Hash, IP, DNS, Firewall Action, or Port.
+
+    Exclusions: Check "Exclude N/A" boxes to see only events with usable indicators.
+
+    Pivot: Right-click a suspicious entry to strip away noise and follow the "story" of a specific process.
 
 📥 Installation & Usage
 
     Download Security_logs_analyzer.ps1.
 
-    (Optional) Edit the script to add your VirusTotal API Key in the $script:VT_API_KEY field.
+    (Optional) Insert your VirusTotal API Key in the $script:VT_API_KEY variable.
 
     Open PowerShell as Administrator.
 
-    Run the script:
+    Execute:
     PowerShell
 
     .\Security_logs_analyzer.ps1
