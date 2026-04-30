@@ -1,9 +1,11 @@
 <#
-    Advanced EDR Multi-Source Visualizer - ULTIMATE EDITION v3.4.1
-    - FIXED: XAML loading error (removed invalid Padding property on StackPanel).
-    - ADDED: "Exclude N/A" UI checkboxes to instantly filter out empty network/hash data.
+    Advanced EDR Multi-Source Visualizer - ULTIMATE EDITION v3.6
+    - ADDED: "Log Type" Classification Engine (categorizes raw providers into clean types).
+    - ADDED: Dedicated "Log Type" filter in the UI and new column in the DataGrid.
+    - UPDATED: HTML, CSV, and JSON exports to include the new Log Type data.
+    - RETAINS: PowerShell Operational Logging (IDs 4103, 4104)
+    - RETAINS: "Exclude N/A" UI checkboxes.
     - RETAINS: Support for Adv. Security FW XML Event IDs (2010, 2052, 2097)
-    - RETAINS: Full GUI, Process Pivot, Exports, VT Context Menu
     - RETAINS: WFP Event IDs (5152-5159, 5031) and W3C (.log) parsing
 #>
 
@@ -41,6 +43,7 @@ function Get-CombinedEDREvents {
                     TimeCreated = $timeCreated
                     EventID     = "W3C-FW"
                     Provider    = "pfirewall.log"
+                    LogType     = "Firewall"
                     Image       = "Network/Firewall"
                     User        = "N/A"
                     Hash        = "N/A"
@@ -115,13 +118,18 @@ function Get-CombinedEDREvents {
         $destIp = "N/A"
         $dnsQuery = "N/A"
         $details = ""
+        
+        # --- LOG TYPE CLASSIFICATION ---
+        $logType = "Unknown"
 
         if ($provider -like "*Windows Defender*") {
+            $logType = "Defender"
             $threat = $data.'Threat Name' ?? $data.ThreatName ?? "Unknown Threat"
             $action = $data.'Action Name' ?? $data.ActionName ?? "Action Taken"
             $path = $data.Path ?? $data.'Resource Path' ?? "Unknown Path"
             $details = "⚠️ DEFENDER: $action on $threat | Path: $path"
         } elseif ($provider -like "*Windows Firewall*") {
+            $logType = "Firewall"
             $ruleName = $data.RuleName ?? $data.ModifyingRuleName ?? "Unknown Rule"
             switch($id) {
                 2004 { $details = "🛡️ FW RULE ADDED: $ruleName" }
@@ -138,6 +146,7 @@ function Get-CombinedEDREvents {
                 default { $details = "🛡️ FW CONFIG: Action on Rule $ruleName | ID: $id" }
             }
         } elseif ($provider -like "*Security-Auditing*") {
+            $logType = "Security"
             switch($id) {
                 4624 { 
                     $destIp = $data.IpAddress ?? "Local"
@@ -147,24 +156,12 @@ function Get-CombinedEDREvents {
                 4798 { $details = "🔍 GROUP: Enumerate groups for $($data.TargetUserName)" }
                 5031 { $details = "⛔ FW SERVICE BLOCK: App $($data.Application) blocked from incoming connections." }
                 
-                5152 {
-                    $destIp = $data.DestAddress
-                    $details = "⛔ WFP BLOCK: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)"
-                }
-                5153 {
-                    $destIp = $data.DestAddress
-                    $details = "⛔ WFP BLOCK: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)"
-                }
+                5152 { $destIp = $data.DestAddress; $details = "⛔ WFP BLOCK: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)" }
+                5153 { $destIp = $data.DestAddress; $details = "⛔ WFP BLOCK: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)" }
                 5154 { $details = "✅ WFP LISTEN PERMIT: App listening on port $($data.SourcePort)" }
                 5155 { $details = "⛔ WFP LISTEN BLOCK: App blocked on port $($data.SourcePort)" }
-                5156 {
-                    $destIp = $data.DestAddress
-                    $details = "✅ WFP ALLOW: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)"
-                }
-                5157 {
-                    $destIp = $data.DestAddress
-                    $details = "⛔ WFP DROP: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)"
-                }
+                5156 { $destIp = $data.DestAddress; $details = "✅ WFP ALLOW: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)" }
+                5157 { $destIp = $data.DestAddress; $details = "⛔ WFP DROP: $($data.SourceAddress):$($data.SourcePort) -> $($data.DestAddress):$($data.DestPort) | Proto: $($data.Protocol)" }
                 5158 { $details = "✅ WFP BIND PERMIT: App bound to port $($data.SourcePort)" }
                 5159 { $details = "⛔ WFP BIND BLOCK: App blocked binding to port $($data.SourcePort)" }
                 
@@ -172,17 +169,35 @@ function Get-CombinedEDREvents {
                 default { $details = "Security ID $id" }
             }
         } elseif ($provider -like "*Sysmon*") {
+            $logType = "Sysmon"
             switch($id) {
                 1  { $details = "PROCESS: $($data.CommandLine)" }
-                3  { 
-                    $destIp = $data.DestinationIp
-                    $details = "NETWORK: $($data.SourceIp) -> $($data.DestinationIp):$($data.DestinationPort)" 
-                }
-                22 { 
-                    $dnsQuery = $data.QueryName
-                    $details = "DNS: $($data.QueryName)" 
-                }
+                3  { $destIp = $data.DestinationIp; $details = "NETWORK: $($data.SourceIp) -> $($data.DestinationIp):$($data.DestinationPort)" }
+                22 { $dnsQuery = $data.QueryName; $details = "DNS: $($data.QueryName)" }
                 default { $details = "Sysmon ID $id" }
+            }
+        } elseif ($provider -like "*PowerShell*") {
+            $logType = "PowerShell"
+            if ($imagePath -eq "System/EDR") { $imagePath = "powershell.exe" }
+            switch($id) {
+                4104 { 
+                    $scriptBlock = $data.ScriptBlockText
+                    if ($scriptBlock) {
+                        $cleanScript = $scriptBlock -replace '[\r\n]+', ' '
+                        if ($cleanScript.Length -gt 250) { $cleanScript = $cleanScript.Substring(0, 250) + "..." }
+                        $details = "📜 PS SCRIPT BLOCK: $cleanScript"
+                    } else {
+                        $details = "📜 PS SCRIPT BLOCK (Empty)"
+                    }
+                }
+                4103 { 
+                    $details = "📜 PS PIPELINE EXECUTION"
+                    if ($data.Payload) {
+                        $cleanPayload = $data.Payload -replace '[\r\n]+', ' '
+                        $details += " | $cleanPayload"
+                    }
+                }
+                default { $details = "📜 PS EVENT ID $id" }
             }
         }
 
@@ -194,6 +209,7 @@ function Get-CombinedEDREvents {
             TimeCreated = $timeCreated
             EventID     = [string]$id
             Provider    = $provider
+            LogType     = $logType
             Image       = $imagePath
             User        = $detectedUser
             Hash        = $sha256
@@ -234,6 +250,7 @@ function Get-EDRTreeView {
         [PSCustomObject]@{
             Time         = $item.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss.fff")
             User         = $item.User
+            LogType      = $item.LogType
             EventID      = $item.EventID
             Hash         = $item.Hash
             DestIP       = $item.DestIP
@@ -266,11 +283,11 @@ function ConvertTo-HtmlReport {
 </style></head>
 <body>
     <h2>EDR Investigation Activity Report</h2>
-    <table><tr><th>Time</th><th>User</th><th>ID</th><th>SHA256 Hash</th><th>Dest IP</th><th>DNS Query</th><th>Activity / Details</th></tr>
+    <table><tr><th>Time</th><th>User</th><th>Log Type</th><th>ID</th><th>SHA256 Hash</th><th>Dest IP</th><th>DNS Query</th><th>Activity / Details</th></tr>
 "@)
     foreach ($row in $DataItems) {
         $cleanTree = [System.Net.WebUtility]::HtmlEncode($row.ActivityTree)
-        [void]$sb.Append("<tr><td>$($row.Time)</td><td>$($row.User)</td><td>$($row.EventID)</td><td>$($row.Hash)</td><td>$($row.DestIP)</td><td>$($row.DNSQuery)</td><td class='tree'>$cleanTree</td></tr>")
+        [void]$sb.Append("<tr><td>$($row.Time)</td><td>$($row.User)</td><td>$($row.LogType)</td><td>$($row.EventID)</td><td>$($row.Hash)</td><td>$($row.DestIP)</td><td>$($row.DNSQuery)</td><td class='tree'>$cleanTree</td></tr>")
     }
     [void]$sb.Append("</table></body></html>")
     return $sb.ToString()
@@ -282,13 +299,14 @@ function ConvertTo-HtmlReport {
 $selectorXaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Source Selection" Height="300" Width="360" WindowStartupLocation="CenterScreen" Topmost="True">
+        Title="Source Selection" Height="330" Width="380" WindowStartupLocation="CenterScreen" Topmost="True">
     <StackPanel Margin="20">
         <TextBlock Text="Select Live Logs (Last 24h):" FontWeight="Bold" FontSize="14" Margin="0,0,0,10"/>
         <CheckBox x:Name="ChkSecurity" Content="Windows Security Logs (Includes WFP)" IsChecked="False" Margin="0,5"/>
         <CheckBox x:Name="ChkDefender" Content="Windows Defender Logs" IsChecked="False" Margin="0,5"/>
         <CheckBox x:Name="ChkSysmon" Content="Sysmon Logs" IsChecked="False" Margin="0,5"/>
         <CheckBox x:Name="ChkFirewall" Content="Adv. Security Firewall Logs" IsChecked="False" Margin="0,5"/>
+        <CheckBox x:Name="ChkPowerShell" Content="PowerShell Operational Logs (Scripts)" IsChecked="False" Margin="0,5"/>
         <UniformGrid Columns="2" Margin="0,15,0,0">
             <Button x:Name="BtnLive" Content="⚡ Load Selected" Height="35" Margin="0,0,5,0" Background="#0078D4" Foreground="White"/>
             <Button x:Name="BtnManual" Content="📂 Manual Import (.log/.xml)" Height="35"/>
@@ -306,6 +324,7 @@ $selector.FindName('BtnLive').Add_Click({
     if ($selector.FindName('ChkDefender').IsChecked) { $script:selectedLogs += "Microsoft-Windows-Windows Defender/Operational" }
     if ($selector.FindName('ChkSysmon').IsChecked)   { $script:selectedLogs += "Microsoft-Windows-Sysmon/Operational" }
     if ($selector.FindName('ChkFirewall').IsChecked) { $script:selectedLogs += "Microsoft-Windows-Windows Firewall With Advanced Security/Firewall" }
+    if ($selector.FindName('ChkPowerShell').IsChecked) { $script:selectedLogs += "Microsoft-Windows-PowerShell/Operational" }
     $selector.Close()
 })
 $selector.FindName('BtnManual').Add_Click({ $selector.Close() })
@@ -317,7 +336,7 @@ $selector.ShowDialog() | Out-Null
 $mainXaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="EDR Visualizer - Ultimate Edition v3.4.1" Height="900" Width="1580">
+        Title="EDR Visualizer - Ultimate Edition v3.6" Height="900" Width="1580">
     <Grid Margin="10">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         
@@ -341,6 +360,7 @@ $mainXaml = @"
 
         <Border Grid.Row="1" Background="#E9ECEF" Padding="10" CornerRadius="5" Margin="0,0,0,10">
             <WrapPanel>
+                <StackPanel Margin="0,0,10,0"><TextBlock Text="Log Type:" FontSize="10"/><TextBox x:Name="TbLogTypeFilt" Width="70" Height="25" ToolTip="e.g., Sysmon, Firewall, Security, PowerShell"/></StackPanel>
                 <StackPanel Margin="0,0,10,0"><TextBlock Text="Filter User:" FontSize="10"/><TextBox x:Name="TbUserFilt" Width="80" Height="25"/></StackPanel>
                 <StackPanel Margin="0,0,10,0"><TextBlock Text="Event ID:" FontSize="10"/><TextBox x:Name="TbIdFilt" Width="50" Height="25"/></StackPanel>
                 <StackPanel Margin="0,0,10,0"><TextBlock Text="Hash Search:" FontSize="10"/><TextBox x:Name="TbHashFilt" Width="90" Height="25"/></StackPanel>
@@ -391,14 +411,15 @@ $mainXaml = @"
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="170" SortMemberPath="RawDate"/>
                 <DataGridTextColumn Header="User" Binding="{Binding User}" Width="120"/>
-                <DataGridTextColumn Header="ID" Binding="{Binding EventID}" Width="60"/>
-                <DataGridTextColumn Header="SHA256 Hash" Binding="{Binding Hash}" Width="150">
+                <DataGridTextColumn Header="Log Type" Binding="{Binding LogType}" Width="80"/>
+                <DataGridTextColumn Header="ID" Binding="{Binding EventID}" Width="50"/>
+                <DataGridTextColumn Header="SHA256 Hash" Binding="{Binding Hash}" Width="140">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock"><Setter Property="TextTrimming" Value="CharacterEllipsis"/><Setter Property="ToolTip" Value="{Binding Hash}"/></Style>
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
                 <DataGridTextColumn Header="Dest IP" Binding="{Binding DestIP}" Width="110"/>
-                <DataGridTextColumn Header="DNS Query" Binding="{Binding DNSQuery}" Width="160">
+                <DataGridTextColumn Header="DNS Query" Binding="{Binding DNSQuery}" Width="150">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock"><Setter Property="TextTrimming" Value="CharacterEllipsis"/><Setter Property="ToolTip" Value="{Binding DNSQuery}"/></Style>
                     </DataGridTextColumn.ElementStyle>
@@ -480,7 +501,7 @@ $window.FindName('BtnSaveCSV').Add_Click({
     $dlg = [Microsoft.Win32.SaveFileDialog]::new()
     $dlg.Filter = "CSV Files (*.csv)|*.csv"
     if ($dlg.ShowDialog()) {
-        $grid.ItemsSource | Select-Object Time, User, EventID, Hash, DestIP, DNSQuery, ActivityTree | Export-Csv -Path $dlg.FileName -NoTypeInformation
+        $grid.ItemsSource | Select-Object Time, User, LogType, EventID, Hash, DestIP, DNSQuery, ActivityTree | Export-Csv -Path $dlg.FileName -NoTypeInformation
         $txtStatus.Text = "Exported to CSV successfully."
     }
 })
@@ -490,7 +511,7 @@ $window.FindName('BtnSaveJSON').Add_Click({
     $dlg = [Microsoft.Win32.SaveFileDialog]::new()
     $dlg.Filter = "JSON Files (*.json)|*.json"
     if ($dlg.ShowDialog()) {
-        $grid.ItemsSource | Select-Object Time, User, EventID, Hash, DestIP, DNSQuery, ActivityTree | ConvertTo-Json -Depth 3 | Set-Content -Path $dlg.FileName
+        $grid.ItemsSource | Select-Object Time, User, LogType, EventID, Hash, DestIP, DNSQuery, ActivityTree | ConvertTo-Json -Depth 3 | Set-Content -Path $dlg.FileName
         $txtStatus.Text = "Exported to JSON successfully."
     }
 })
@@ -507,6 +528,7 @@ $window.FindName('BtnLoad').Add_Click({
 })
 
 $window.FindName('BtnApply').Add_Click({
+    $ltFilt = $window.FindName('TbLogTypeFilt').Text
     $uFilt = $window.FindName('TbUserFilt').Text
     $iFilt = $window.FindName('TbIdFilt').Text
     $hFilt = $window.FindName('TbHashFilt').Text
@@ -524,10 +546,11 @@ $window.FindName('BtnApply').Add_Click({
     $hideNaDns  = [bool]$window.FindName('ChkHideNaDns').IsChecked
 
     # Reset if all text filters are empty and checkboxes are unchecked
-    if ([string]::IsNullOrWhiteSpace($uFilt) -and [string]::IsNullOrWhiteSpace($iFilt) -and 
-        [string]::IsNullOrWhiteSpace($tFilt) -and [string]::IsNullOrWhiteSpace($hFilt) -and 
-        [string]::IsNullOrWhiteSpace($ipFilt) -and [string]::IsNullOrWhiteSpace($dnsFilt) -and 
-        [string]::IsNullOrWhiteSpace($actFilt) -and [string]::IsNullOrWhiteSpace($portFilt) -and 
+    if ([string]::IsNullOrWhiteSpace($ltFilt) -and [string]::IsNullOrWhiteSpace($uFilt) -and 
+        [string]::IsNullOrWhiteSpace($iFilt) -and [string]::IsNullOrWhiteSpace($tFilt) -and 
+        [string]::IsNullOrWhiteSpace($hFilt) -and [string]::IsNullOrWhiteSpace($ipFilt) -and 
+        [string]::IsNullOrWhiteSpace($dnsFilt) -and [string]::IsNullOrWhiteSpace($actFilt) -and 
+        [string]::IsNullOrWhiteSpace($portFilt) -and 
         $null -eq $start -and $null -eq $end -and 
         -not $hideNaUser -and -not $hideNaHash -and -not $hideNaIp -and -not $hideNaDns) {
         $grid.ItemsSource = Get-EDRTreeView -Events $script:RawData
@@ -535,6 +558,7 @@ $window.FindName('BtnApply').Add_Click({
     }
 
     $filtered = $script:RawData | Where-Object {
+        ([string]::IsNullOrWhiteSpace($ltFilt) -or $_.LogType -like "*$ltFilt*") -and
         ([string]::IsNullOrWhiteSpace($uFilt) -or $_.User -like "*$uFilt*") -and
         ([string]::IsNullOrWhiteSpace($iFilt) -or $_.EventID -eq $iFilt) -and
         ([string]::IsNullOrWhiteSpace($hFilt) -or $_.Hash -like "*$hFilt*") -and
@@ -554,6 +578,7 @@ $window.FindName('BtnApply').Add_Click({
 })
 
 $window.FindName('BtnClearFilter').Add_Click({
+    $window.FindName('TbLogTypeFilt').Text = ""
     $window.FindName('TbUserFilt').Text = ""
     $window.FindName('TbIdFilt').Text = ""
     $window.FindName('TbHashFilt').Text = ""
